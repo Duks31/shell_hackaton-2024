@@ -1,464 +1,383 @@
-import pandas as pd
-import pyomo.environ as pyo
+# imports
+import pandas as pd 
+import pyomo.environ as pe 
+import pyomo.opt as po
 import csv
+from collections import defaultdict
 
-# Helper functions
-def read_vehicle_cost(file_path):
-    """
-    This function reads the vehicle cost from the file and returns a dictionary of vehicle cost
 
-    parameters: file_path: str: path to the file containing the vehicle cost
-    """
-    if file_path is None:
-        raise ValueError("file_path cannot be None")
+data = pd.read_csv('dataset/vehicles.csv')
+data_v = pd.read_csv("dataset/vehicles_fuels.csv")
+
+def read_vehicle_data(file_path):
 
     data = pd.read_csv(file_path)
     vehicle_cost = {}
-    for _, row in data.iterrows():
-        vehicle_cost[row["ID"]] = row["Cost ($)"]
-
-    return vehicle_cost
-
-
-def read_vehicle_range(file_path):
-    """
-    This function reads the vehicle range from the file and returns a dictionary of vehicle range
-
-    parameters: file_path: str: path to the file containing the vehicle range
-    """
-    if file_path is None:
-        raise ValueError("file_path cannot be None")
-
-    data = pd.read_csv(file_path)
     vehicle_range = {}
     for _, row in data.iterrows():
+        vehicle_cost[row["ID"]] = row["Cost ($)"]
         vehicle_range[row["ID"]] = row["Yearly range (km)"]
 
-    return vehicle_range
+    return vehicle_cost, vehicle_range
 
-
-def read_fuel_cost(file_path):
-    """
-    This function reads the fuel cost from the file and returns a dictionary of fuel cost
-
-    parameters: file_path: str: path to the file containing the fuel cost
-    """
-    if file_path is None:
-        raise ValueError("file_path cannot be None")
+def read_vehicle_fuel_data(file_path)   :
 
     data = pd.read_csv(file_path)
+    vehicle_consumption = defaultdict(lambda: 0.0) 
+    for _, row in data.iterrows():
+        key = (row['ID'], row['Fuel'])
+        vehicle_consumption[key] = row["Consumption (unit_fuel/km)"]
+
+    return vehicle_consumption
+
+def read_demand_data(file_path):
+    data = pd.read_csv(file_path)
+    vehicle_demand = {}
+    for _, row in data.iterrows():
+        key = (row['Year'], row['Size'], row['Distance'])
+        vehicle_demand[key] = row["Demand (km)"]
+    
+    return vehicle_demand
+
+def read_fuel_data(file_path):
+    data = pd.read_csv(file_path)
+    fuel_emissions = {}
     fuel_cost = {}
     for _, row in data.iterrows():
-        key = f"{row['Fuel']}_{int(row['Year'])}"
-        fuel_cost[key] = float(row["Cost ($/unit_fuel)"])
-
-    return fuel_cost
-
-
-def read_fuel_consumption(file_path):
-    """
-    This function reads the fuel consumption from the file and returns a dictionary of fuel consumption
-
-    parameters: file_path: str: path to the file containing the fuel consumption
-    """
-    if file_path is None:
-        raise ValueError("file_path cannot be None")
-
-    data = pd.read_csv(file_path)
-    fuel_consumption = {}
-    for _, row in data.iterrows():
-        fuel_consumption[row["ID"]] = row["Consumption (unit_fuel/km)"]
-
-    return fuel_consumption
+        key = (row['Fuel'], row['Year'])
+        fuel_emissions[key] = row['Emissions (CO2/unit_fuel)']
+        fuel_cost[key] = row['Cost ($/unit_fuel)']
+    
+    return fuel_emissions, fuel_cost
 
 
-def read_fuel_emission_factors(file_path):
-    """
-    This function reads the fuel consumption from the file and returns a dictionary of fuel emissions
-
-    parameters: file_path: str: path to the file containing the fuel consumption
-    """
-    if file_path is None:
-        raise ValueError("file_path cannot be None")
-
-    data = pd.read_csv(file_path)
-    emission_cost = {}
-    for _, row in data.iterrows():
-        key = f"{row["Fuel"]}_{int(row["Year"])}"
-        emission_cost[key] = float(row["Emissions (CO2/unit_fuel)"])
-
-    return emission_cost
+years = (range(2023, 2039))
+vehicles = data["ID"]
+size_bucket = {'S1', 'S2', 'S3', 'S4'}
+distance_bucket = {'D1', 'D2', 'D3', 'D4'}
+fuel_types = {'Electricity', 'B20', 'LNG', 'BioLNG', 'HVO'}
+vehicle_cost, vehicle_range = read_vehicle_data("dataset/vehicles.csv")
+vehicle_consumption = read_vehicle_fuel_data("dataset/vehicles_fuels.csv")
+vehicle_demand = read_demand_data("dataset/demand.csv")
+fuel_emissions, fuel_cost = read_fuel_data("dataset/fuels.csv")
 
 
-def read_demand(file_path):
-    """
-    This function reads the demand of cars from the file and returns a dict of demand in Km
+### Model
 
-    parameters: file_path: str: path to file the containing the demand of the cars
-    """
-    if file_path is None:
-        raise ValueError("file_path cannot be None")
+model = pe.ConcreteModel()
 
-    data = pd.read_csv(file_path)
-    demand = {}
-    for _, row in data.iterrows():
-        key = f"{int(row["Year"])}_{row["Size"]}_{row["Distance"]}"
-        demand[key] = row["Demand (km)"]
-
-    return demand
-
-
-def read_carbon_emission(file_path):
-    """
-    This function reads the carbon limits of each years
-
-    parameters: file_path: str: path to the file containing the carbon emissions
-    """
-    if file_path is None:
-        raise ValueError("file_path cannot be None")
-
-    data = pd.read_csv(file_path)
-    carbon_emission = {}
-    for _, row in data.iterrows():
-        carbon_emission[row["Year"]] = row["Carbon emission CO2/kg"]
-
-    return carbon_emission
-
-
-def read_vehicle_mapping(file_path):
-    data = pd.read_csv(file_path)
-    vehicle_mapping = {}
-    for _, row in data.iterrows():
-        vehicle_id = row["ID"]
-        size = row["Size"]
-        distance = row["Distance"]
-        vehicle_mapping[vehicle_id] = (size, distance)
-
-    return vehicle_mapping
-
-def read_vehicle_fuel_mapping(file_path):
-    data = pd.read_csv(file_path)
-    vehicle_mapping = {}
-    for _, row in data.iterrows():
-        vehicle_id = row["ID"]
-        fuel = row["Fuel"]
-        vehicle_mapping[vehicle_id] = (fuel)
-    return vehicle_mapping
-
-# Data
-
-purchased_cost_data = read_vehicle_cost("dataset/vehicles.csv")
-
-vehicle_range_data = read_vehicle_range("dataset/vehicles.csv")
-
-fuel_cost_data = read_fuel_cost("dataset/fuels.csv")
-
-fuel_consumption_data = read_fuel_consumption("dataset/vehicles_fuels.csv")
-
-emission_factor = read_fuel_emission_factors("dataset/fuels.csv")
-
-demand_data = read_demand("dataset/demand.csv")
-
-carbon_limit_data = read_carbon_emission("dataset/carbon_emissions.csv")
-
-vehicle_to_size_distance = read_vehicle_mapping("dataset/vehicles.csv")
-
-vehicle_to_size_distance_fuel = read_vehicle_fuel_mapping("dataset/vehicles_fuels.csv")
-
-# Model
-model = pyo.ConcreteModel()
 
 # Set
-model.years = pyo.Set(initialize=range(2023, 2039))
-model.vehicle_types = pyo.Set(initialize=purchased_cost_data.keys())
-model.size_buckets = pyo.Set(initialize=["S1", "S2", "S3", "S4"])
-model.distance_buckets = pyo.Set(initialize=["D1", "D2", "D3", "D4"])
-model.fuel_types = pyo.Set(initialize=["Electricity", "B20", "LNG", "BioLNG", "HVO"])
 
-# Parameters
-
-# Cost of buying vehicles
-model.purchase_cost = pyo.Param(
-    model.vehicle_types, initialize=purchased_cost_data, within=pyo.NonNegativeReals
-)
-
-# vehicle ranges
-model.vehicle_range = pyo.Param(
-    model.vehicle_types, initialize=vehicle_range_data, within=pyo.NonNegativeReals
-)
-
-# fuel cost
-model.fuel_cost = pyo.Param(
-    model.fuel_types,
-    model.years,
-    initialize=lambda model, f, y: fuel_cost_data[f"{f}_{y}"],
-    within=pyo.NonNegativeReals,
-)
-
-# fuel consumption
-model.fuel_consumption = pyo.Param(
-    model.vehicle_types, initialize=fuel_consumption_data, within=pyo.NonNegativeReals
-)
-
-# fuel emission factors
-model.emission_factor = pyo.Param(
-    model.fuel_types,
-    model.years,
-    initialize=lambda model, f, y: emission_factor[f"{f}_{y}"],
-    within=pyo.NonNegativeReals,
-)
-
-# demand
-model.demand = pyo.Param(
-    model.years,
-    model.size_buckets,
-    model.distance_buckets,
-    initialize=lambda model, y, s, d: demand_data[f"{y}_{s}_{d}"],
-    within=pyo.NonNegativeReals,
-)
-
-# carbon limits
-model.carbon_limit = pyo.Param(
-    model.years, initialize=carbon_limit_data, within=pyo.NonNegativeReals
-)
-
-# resale value
-resale_percentage = {
-    1: 0.90,
-    2: 0.80,
-    3: 0.70,
-    4: 0.60,
-    5: 0.50,
-    6: 0.40,
-    7: 0.30,
-    8: 0.30,
-    9: 0.30,
-    10: 0.30,
-}
-
-# insurance value
-insurance_percentage = {
-    1: 0.05,
-    2: 0.06,
-    3: 0.07,
-    4: 0.08,
-    5: 0.09,
-    6: 0.10,
-    7: 0.11,
-    8: 0.12,
-    9: 0.13,
-    10: 0.14,
-}
-
-# maintenance value
-maintenance_percentage = {
-    1: 0.01,
-    2: 0.03,
-    3: 0.05,
-    4: 0.07,
-    5: 0.09,
-    6: 0.11,
-    7: 0.13,
-    8: 0.15,
-    9: 0.17,
-    10: 0.19,
+model.years = pe.Set(initialize = years)
+model.vehicles = pe.Set(initialize = vehicles)
+model.size = pe.Set(initialize = size_bucket)
+model.distance = pe.Set(initialize = distance_bucket)
+model.fuel = pe.Set(initialize = fuel_types)
+carbon_emission = {
+    2023: 11677957,
+    2024: 10510161,
+    2025: 9459145,
+    2026: 8513230,
+    2027: 7661907,
+    2028: 6895716,
+    2029: 6206145,
+    2030: 5585530,
+    2031: 5026977,
+    2032: 4524279,
+    2033: 4071851,
+    2034: 3664666,
+    2035: 3298199,
+    2036: 2968379,
+    2037: 2671541,
+    2038: 2404387
 }
 
 
-# Variables
-model.num_vehicles_bought = pyo.Var(
-    model.vehicle_types, model.years, within=pyo.NonNegativeIntegers
-)
-model.num_vehicles_used = pyo.Var(
-    model.vehicle_types, model.years, within=pyo.NonNegativeIntegers
-)
-model.num_vehicles_sold = pyo.Var(
-    model.vehicle_types, model.years, within=pyo.NonNegativeIntegers
-)
-model.num_vehicles_traveled = pyo.Var(
-    model.vehicle_types, model.years, within=pyo.NonNegativeIntegers
-)
-model.fuel_used = pyo.Var(model.fuel_types, model.years, within=pyo.NonNegativeReals)
+# parameters
+
+model.carbon_emissions = pe.Param(model.years, initialize = carbon_emission)
+model.vehicle_cost = pe.Param(model.vehicles, initialize = vehicle_cost)
+model.vehicle_range = pe.Param(model.vehicles, initialize = vehicle_range)
+model.vehicle_consumption = pe.Param(model.vehicles, model.fuel, initialize = vehicle_consumption, default = 0.0)
+model.vehicle_demand = pe.Param(model.years, model.size, model.distance, initialize = vehicle_demand)
+model.fuel_emissions = pe.Param(model.fuel, model.years, initialize = fuel_emissions)
+model.fuel_cost = pe.Param(model.fuel, model.years, initialize = fuel_cost)
 
 
-# Constraints
-def demand_satisfaction_constraint(model, y, s, d):
-    return (
+# variables 
+
+model.number_vehicles_bought = pe.Var(model.vehicles, model.years, domain = pe.NonNegativeIntegers)
+model.number_vehicles_use = pe.Var(model.vehicles, model.fuel, model.years, domain = pe.NonNegativeIntegers)
+model.number_vehicles_sold = pe.Var(model.vehicles, model.years, domain = pe.NonNegativeIntegers)
+model.number_vehicles_distance = pe.Var(model.vehicles, model.fuel, model.years, domain = pe.NonNegativeIntegers)
+
+
+# constraint 1
+
+model.size_constraint = pe.ConstraintList()
+
+size_to_vehicles = {size: list(data[data["Size"] == size]["ID"]) for size in size_bucket}
+
+for year in years:
+    for size in size_bucket:
+        for distance in distance_bucket:
+            model.size_constraint.add(
+                sum(model.number_vehicles_distance[v, f, year] for v in size_to_vehicles[size] for f in fuel_types) >= model.vehicle_demand[year, size, distance]
+            )    
+
+
+# constraint 2
+
+model.distance_constraint = pe.ConstraintList()
+
+# Vehicle belonging to distance bucket Dx can satisfy all demands for distance bucket D1 to 
+# Dx. For example, vehicle belonging to distance bucket D4 can satisfy demand of D1, D2, 
+# D3, D4buckets; similarly, D3 can satisfy D1, D2, D3 but NOT D4
+
+distance_satisfies = {
+    'D1': ['D1'],
+    'D2': ['D1', 'D2'],
+    'D3': ['D1', 'D2', 'D3'],
+    'D4': ['D1', 'D2', 'D3', 'D4']
+}
+
+for year in years:
+    for size in size_bucket:
+        for distance in distance_bucket:
+            valid_distances = distance_satisfies[distance]
+            model.distance_constraint.add(
+                sum(model.number_vehicles_distance[v, f, year] 
+                    for v in vehicles 
+                    for f in fuel_types
+                    if data[data["ID"] == v]["Distance"].values[0] in valid_distances
+                    ) >= model.vehicle_demand[year, size, distance]
+            )
+
+
+# constraints 3
+
+model.carbon_emission_constraint = pe.ConstraintList()
+
+# total carbon emission by fleet operation each year should be within the respective year's carbon emission limit provided in the carbon_emission csv file
+
+for year in years:
+    model.carbon_emission_constraint.add(
         sum(
-            model.num_vehicles_traveled[v, y] * model.vehicle_range[v]
-            for v in model.vehicle_types
-        )
-        >= model.demand[y, s, d]
+            model.number_vehicles_distance[v, f, year] *
+            model.number_vehicles_use[v, f, year] *
+            model.vehicle_consumption[v, f] *
+            model.fuel_emissions[f, year]
+            for v in vehicles
+            for f in fuel_types
+        ) <= model.carbon_emissions[year]
     )
 
 
-model.demand_satisfaction_constraint = pyo.Constraint(
-    model.years,
-    model.size_buckets,
-    model.distance_buckets,
-    rule=demand_satisfaction_constraint,
-)
+# constraints 4
 
+model.yearly_demand_constraint = pe.ConstraintList()
 
-def size_distance_bucket_constraint(model, v, y):
-    size, distance = vehicle_to_size_distance[v]
-    for s in model.size_buckets:
-        for d in model.distance_buckets:
-            if s == size and d == distance:
-                # Return the constraint as a tuple (constraint expression, sense)
-                return (
-                    model.num_vehicles_bought[v, y]
-                    == model.num_vehicles_used[v, y] + model.num_vehicles_sold[v, y]
+# Total yearly demand for each year must be satisfied for each distance and size bucket
+
+vehicles_ids_by_size = { size: data[data['Size'] == size]['ID'].tolist() for size in size_bucket}
+
+for year in years:
+    for size in size_bucket:
+        for distance in distance_bucket:
+            demand_value = model.vehicle_demand[year, size, distance]
+            if demand_value > 0:
+                model.yearly_demand_constraint.add(
+                    sum(
+                        model.number_vehicles_distance[v, f, year] *
+                        model.number_vehicles_use[v, f, year]
+                        for v in vehicles_ids_by_size[size]
+                        for f in fuel_types
+                    ) >= demand_value
                 )
-            else:
-                # If s and d do not match size and distance, skip this constraint
-                return pyo.Constraint.Skip
 
 
-model.size_distance_bucket_constraint = pyo.Constraint(
-    model.vehicle_types, model.years, rule=size_distance_bucket_constraint
-)
+# constraint 5
+
+model.vehicle_purchase_constraint = pe.ConstraintList()
+
+# Vehicle model of year 20xx can only be bought in the year 20xx. For example, 
+# Diesel_S1_2026 can only be bought in 2026 and not in any subsequent or previous years.
+
+vehicle_model_year = {}
+for v in vehicles:
+    year = int(v.split('_')[-1])
+    vehicle_model_year[v] = year
+
+for v in vehicles:
+    model_year = vehicle_model_year[v]
+    for year in years:
+        if year != model.years:
+            model.vehicle_purchase_constraint.add(
+                model.number_vehicles_bought[v, year] == 0
+            )
 
 
-def carbon_emission_constraint(model, y):
-    return (
-        sum(
-            model.fuel_used[f, y] * model.emission_factor[f, y]
-            for f in model.fuel_types
-        )
-        <= model.carbon_limit[y]
-    )
+# constraint 6
 
+model.vehicle_lifetime_constraint = pe.ConstraintList()
 
-model.carbon_emission_constraint = pyo.Constraint(
-    model.years, rule=carbon_emission_constraint
-)
+# Every vehicle has a 10-year life and must be sold by the end of 10th year. For example, a 
+# vehicle bought in 2025 must be sold by the end of 2034. 
 
-
-def purchase_year_constraint(model, v, y):
-    purchase_year = int(v.split("_")[-1])
-    if y == purchase_year:
-        return model.num_vehicles_bought[v, y] >= 0
-    else:
-        return model.num_vehicles_bought[v, y] == 0
-
-
-model.purchase_year_constraint = pyo.Constraint(
-    model.vehicle_types, model.years, rule=purchase_year_constraint
-)
-
-
-def vehicle_life_constraint(model, v, y):
-    if y <= max(model.years) - 10:
-        return model.num_vehicles_used[v, y] <= sum(
-            model.num_vehicles_bought[v, yr] for yr in range(y, y + 10)
-        )
-    else:
-        return model.num_vehicles_used[v, y] <= sum(
-            model.num_vehicles_bought[v, yr] for yr in range(y, max(model.years) + 1)
+for v in vehicles:
+    for purchase_year in years:
+        sell_years = range(purchase_year, min(purchase_year + 10, max(years) + 1))
+        model.vehicle_lifetime_constraint.add(
+            sum(model.number_vehicles_sold[v, sell_year] for sell_year in sell_years) >= model.number_vehicles_bought[v, purchase_year]
         )
 
 
-model.vehicle_life_constraint = pyo.Constraint(
-    model.vehicle_types, model.years, rule=vehicle_life_constraint
-)
+# constraint  7
 
+# You cannot buy/sell a vehicle mid-year. All buy operations happen at the beginning of the 
+# year and all sell operations happen at the end of the year
 
-def vehicle_inventory_balance_constraint(model, v, y):
-    if y == min(model.years):
-        # For the first year, there are no vehicles carried over from a previous year
-        return model.num_vehicles_used[v, y] == model.num_vehicles_bought[v, y]
-    else:
-        return (
-            model.num_vehicles_used[v, y]
-            == model.num_vehicles_used[v, y - 1]
-            + model.num_vehicles_bought[v, y]
-            - model.num_vehicles_sold[v, y]
+model.use_after_purchase_constraint = pe.ConstraintList()
+
+for v in vehicles:
+    for year in years:
+        model.use_after_purchase_constraint.add(        
+            sum(model.number_vehicles_use[v, f, year] for f in fuel_types) <= 
+            sum(model.number_vehicles_bought[v, y] for y in years if y <= year)
+        )
+
+model.sell_at_end_of_year_constraint = pe.ConstraintList()
+
+for v in vehicles:
+    for year in years:
+        model.sell_at_end_of_year_constraint.add(
+            sum(model.number_vehicles_sold[v, y] for y in years if y <= year) <=
+            sum(model.number_vehicles_bought[v, y] for y in years if y <= year)
         )
 
 
-model.vehicle_inventory_balance_constraint = pyo.Constraint(
-    model.vehicle_types, model.years, rule=vehicle_inventory_balance_constraint
-)
+# constraint 8 
+
+# Every year at most 20% of the vehicles in the existing fleet can be sold
+
+model.sell_limit_constraint = pe.ConstraintList()
+
+for year in years:
+    for v in vehicles:
+        existing_fleet = sum(model.number_vehicles_bought[v,y] - model.number_vehicles_sold[v, y] for y in years if y <= year)
+        model.sell_limit_constraint.add(
+            model.number_vehicles_sold[v, year] <=  0.2 * existing_fleet
+        )
 
 
-def sales_limit_constraint(model, v, y):
-    return model.num_vehicles_sold[v, y] <= 0.2 * sum(
-        model.num_vehicles_used[v, yr] for yr in range(min(model.years), y + 1)
-    )
+# cost profiles
 
-
-model.sales_limit_constraint = pyo.Constraint(
-    model.vehicle_types, model.years, rule=sales_limit_constraint
-)
-
+resale_value = {1: 0.90, 2: 0.80, 3: 0.70, 4: 0.60, 5: 0.50, 6: 0.40, 7: 0.30, 8: 0.30, 9: 0.30, 10: 0.30}
+insurance_cost = {1: 0.05, 2: 0.06, 3: 0.07, 4: 0.08, 5: 0.09, 6: 0.10, 7: 0.11, 8: 0.12, 9: 0.13, 10: 0.14}
+maintenance_cost = {1: 0.01, 2: 0.03, 3: 0.05, 4: 0.07, 5: 0.09, 6: 0.11, 7: 0.13, 8: 0.15, 9: 0.17, 10: 0.19}
 # Objective function
-def objective_function(model):
-    total_cost = sum(
-        model.purchase_cost[v] * model.num_vehicles_bought[v, y]
-        - resale_percentage.get(y - int(v.split("_")[-1]), 0.30) * model.purchase_cost[v] * model.num_vehicles_sold[v, y]
-        + model.purchase_cost[v] * insurance_percentage.get(y - int(v.split("_")[-1]), 0.14)
-        + model.purchase_cost[v] * maintenance_percentage.get(y - int(v.split("_")[-1]), 0.19)
-        for v in model.vehicle_types for y in model.years
-    )
-    
+
+def total_cost(model):
+
+    # buying cost
+    buying_cost = sum(
+        model.number_vehicles_bought[v, year] * model.vehicle_cost[v] 
+        for v in model.vehicles for year in model.years
+    ) 
+
+    # Insurance cost
+    ins_cost = sum ( 
+        model.vehicle_cost[v] * insurance_cost[min(year - y + 1, 10)] *
+        model.number_vehicles_bought[v, y]
+        for v in model.vehicles for year in model.years for y in model.years if y <= year
+    ) 
+
+    # Maintaenance cost
+    mnt_cost = sum(
+       model.vehicle_cost[v] * maintenance_cost[min(year - y + 1, 10)] *
+        model.number_vehicles_bought[v, y]
+        for v in model.vehicles for year in model.years for y in model.years if y <= year
+    ) 
+
+    # fuel cost
     fuel_cost = sum(
-        model.fuel_cost[f, y] * model.fuel_used[f, y]
-        for f in model.fuel_types for y in model.years
+        model.number_vehicles_distance[v, f, year] * 
+        model.vehicle_consumption[v, f] *
+        model.fuel_cost[f, year]
+        for v in model.vehicles for f in model.fuel for year in model.years
     )
+
+    # selling cost
+    sl_cost = sum(
+        model.number_vehicles_sold[v, year] * model.vehicle_cost[v] *
+        resale_value[min(year - y + 1, 10)]
+        for v in model.vehicles for year in model.years for y in model.years if y <= year
+    ) 
+
+    return buying_cost + ins_cost + mnt_cost + fuel_cost - sl_cost
+
+model.total_cost = pe.Objective(rule = total_cost, sense = pe.minimize)
+
+
+model_instance = model.create_instance()
+solver = po.SolverFactory('ipopt')
+
+
+result = solver.solve(model_instance, tee = True)
+
+
+# submission
+def create_submission(model, output_file):
+    results = []
     
-    return total_cost + fuel_cost
-
-model.objective = pyo.Objective(rule=objective_function, sense=pyo.minimize)
-
-
-# Solver
-solver = pyo.SolverFactory("glpk")
-results = solver.solve(model, tee = True)
-
-
-# Result
-# model.display()
-
-# saving the result to a csv file
-
-# Open the CSV file to write the results
-with open('submission.csv', 'w', newline='') as csvfile:
-    fieldnames = ['Year', 'ID', 'Num_Vehicles', 'Type', 'Fuel', 'Distance_bucket', 'Distance_per_vehicle(km)']
-    writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-    
-    # Write the header
-    writer.writeheader()
-    
-    # Write the results for bought vehicles
+    # Collect buy results
     for year in model.years:
-        for v in model.vehicle_types:
-            num_vehicles_bought = pyo.value(model.num_vehicles_bought[v, year])
-            if num_vehicles_bought > 0:
-                writer.writerow({
-                    'Year': year,
-                    'ID': v,
-                    'Num_Vehicles': num_vehicles_bought,
-                    'Type': 'Buy',
-                    'Fuel': '',
-                    'Distance_bucket': '',
-                    'Distance_per_vehicle(km)': 0.0
+        for v in model.vehicles:
+            if pe.value(model.number_vehicles_bought[v, year]) > 0:
+                results.append({
+                    "Year": year,
+                    "ID": v,
+                    "Num_Vehicles": int(pe.value(model.number_vehicles_bought[v, year])),
+                    "Type": "Buy",
+                    "Fuel": None,
+                    "Distance_bucket": None,
+                    "Distance_per_vehicle(km)": 0.0
                 })
 
-    # Write the results for used vehicles
+    # Collect use results
     for year in model.years:
-        for v in model.vehicle_types:
-            num_vehicles_used = pyo.value(model.num_vehicles_used[v, year])
-            if num_vehicles_used > 0:
-                size, distance, fuel = vehicle_to_size_distance_fuel[v]
-                writer.writerow({
-                    'Year': year,
-                    'ID': v,
-                    'Num_Vehicles': num_vehicles_used,
-                    'Type': 'Use',
-                    'Fuel': fuel,
-                    'Distance_bucket': distance,
-                    'Distance_per_vehicle(km)': pyo.value(model.vehicle_range[v])
+        for v in model.vehicles:
+            for f in model.fuel:
+                if pe.value(model.number_vehicles_use[v, f, year]) > 0:
+                    for distance_bucket in distance_satisfies:
+                        results.append({
+                            "Year": year,
+                            "ID": v,
+                            "Num_Vehicles": int(pe.value(model.number_vehicles_use[v, f, year])),
+                            "Type": "Use",
+                            "Fuel": f,
+                            "Distance_bucket": distance_bucket,
+                            "Distance_per_vehicle(km)": pe.value(model.number_vehicles_distance[v, f, year])
+                        })
+
+    # Collect sell results
+    for year in model.years:
+        for v in model.vehicles:
+            if pe.value(model.number_vehicles_sold[v, year]) > 0:
+                results.append({
+                    "Year": year,
+                    "ID": v,
+                    "Num_Vehicles": int(pe.value(model.number_vehicles_sold[v, year])),
+                    "Type": "Sell",
+                    "Fuel": None,
+                    "Distance_bucket": None,
+                    "Distance_per_vehicle(km)": 0.0
                 })
 
-print("Submission file created successfully.")
+    # Convert results to DataFrame and save as CSV
+    df_results = pd.DataFrame(results)
+    df_results.to_csv(output_file, index=False)
+
+# Example usage
+create_submission(model, 'submission.csv')
