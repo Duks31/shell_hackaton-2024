@@ -1,3 +1,10 @@
 Quick Read:
 
 Wrapping head around Mathematical modelling
+
+### Challenge
+Professional, delivery and operational fleets are a significant contributor to global greenhouse emissions. Fleet owners aspire to achieve net-zero emissions promptly; however, the transition presents a complex dilemma. Balancing the urgency of achieving net-zero emissions with business sustainability and customer satisfaction requires a decision-making framework that considers factors such as timing, location, and approach. In this hackathon, you will have a chance to develop mathematical models to optimize fleet decarbonization strategies, to help fleet owners make informed decisions that align with their energy transition objectives and business outcomes. By harnessing the power of data and mathematical models, you will navigate the complexities of demand forecasts, dissect emission profiles, and find ways to meet ambitious emission targets. The end game is to develop ingenious solutions that strike a balance between operational effectiveness and environmental impact.
+
+### Problem Statement
+
+Road  transport  is  the  backbone  of  supply  chain,  playing  a  pivotal  role  in  moving  goods  and bolstering the economy. This mode of transport’s advantages are flexibility, door-to-door service, and connectivity between cities, towns, and villages. While it comes with convenience and advantage, professional,  delivery  and  operational  fleets  are  a  significant  contributor  to  global  greenhouse emissions.  Fleet  owners  aspire  to  achieve  net-zero  emissions  promptly;  however,  the  transition presents a complex dilemma. Balancing the urgency of achieving net-zero emissions with business sustainability and customer satisfaction requires a decision-making framework that considers factors such as timing, location, and approach
