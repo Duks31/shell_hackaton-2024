@@ -20,7 +20,7 @@ def read_vehicle_data(file_path):
 
     return vehicle_cost, vehicle_range
 
-def read_vehicle_fuel_data(file_path)   :
+def read_vehicle_fuel_data(file_path):
 
     data = pd.read_csv(file_path)
     vehicle_consumption = defaultdict(lambda: 0.0) 
@@ -288,7 +288,8 @@ def total_cost(model):
 
     # Insurance cost
     ins_cost = sum ( 
-        model.vehicle_cost[v] * insurance_cost[min(year - y + 1, 10)] *
+        insurance_cost[min(year - y + 1, 10)] *
+        model.vehicle_cost[v] * 
         model.number_vehicles_bought[v, y]
         for v in model.vehicles for year in model.years for y in model.years if y <= year
     ) 
